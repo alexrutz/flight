@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1a2a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <title>Sky Hopper</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">{ "imports": { "three": "./three/three.module.js", "three/addons/": "./three/addons/" } }</script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- A320 windshield frame for the cockpit view -->
+  <svg id="cockpitFrame" class="hidden" viewBox="0 0 1000 560" preserveAspectRatio="none" aria-hidden="true">
+    <path fill="#15191f" d="M0 0H1000V560H0Z M60 70 L470 40 L470 330 L90 360 Z M530 40 L940 70 L910 360 L530 330 Z" fill-rule="evenodd"/>
+    <path fill="#20262e" d="M0 380 Q500 330 1000 380 V560 H0Z"/>
+  </svg>
+
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div id="ecam" class="panel"></div>
+      <div id="buttons">
+        <button id="fcuBtn" class="jet-only" aria-label="Autopilot panel">FCU</button>
+        <button id="camBtn" aria-label="Switch camera"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg></button>
+        <button id="pauseBtn" aria-label="Pause">❚❚</button>
+      </div>
+    </div>
+
+    <div id="fcu" class="panel jet-only hidden">
+      <div class="knob"><span>SPD</span><button id="spdDn">−</button><b id="spdVal">---</b><button id="spdUp">+</button><button id="spdMng" class="small">MNG</button></div>
+      <div class="knob"><span>HDG</span><button id="hdgDn">−</button><b id="hdgVal">000</b><button id="hdgUp">+</button><button id="hdgPull" class="small">PULL</button></div>
+      <div class="knob"><span>ALT</span><button id="altDn">−</button><b id="altVal">5000</b><button id="altUp">+</button><button id="lvlch" class="small">LVL/CH</button></div>
+      <div class="knob"><span>V/S</span><button id="vsDn">−</button><b id="vsVal">-----</b><button id="vsUp">+</button></div>
+      <div class="fcu-buttons">
+        <button id="apBtn">AP1</button><button id="athrBtn">A/THR</button><button id="locBtn">LOC</button><button id="apprBtn">APPR</button>
+      </div>
+    </div>
+
+    <div id="warn"></div>
+    <div id="toast"></div>
+    <div id="report" class="panel hidden"></div>
+
+    <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div></div>
+
+    <canvas id="pfd"></canvas>
+
+    <div id="controls">
+      <button id="gearBtn" class="jet-only">GEAR<b>DOWN</b></button>
+      <div class="flaps">
+        <button id="flapUp">▲</button>
+        <div>FLAPS<b id="flapVal">0</b></div>
+        <button id="flapDn">▼</button>
+      </div>
+      <button id="sbBtn" class="jet-only">SPD BRK<b>RET</b></button>
+      <button id="abBtn" class="jet-only">AUTO BRK<b>OFF</b></button>
+      <button id="trimUp" class="prop-only">TRIM<b>NOSE ▲</b></button>
+      <button id="trimDn" class="prop-only">TRIM<b>NOSE ▼</b></button>
+      <button id="brakeBtn">BRAKES<b>HOLD</b></button>
+    </div>
+    <div id="thrustCol">
+      <button id="revBtn" class="jet-only">REV</button>
+      <div id="thrust">
+        <div id="thrFill"></div>
+        <div class="detent jet-only" style="bottom:100%">TOGA</div>
+        <div class="detent jet-only" style="bottom:80%">FLX</div>
+        <div class="detent jet-only" style="bottom:60%">CL</div>
+        <div id="thrLabel">IDLE</div>
+      </div>
+    </div>
+    <div id="attrib">Imagery: Sentinel-2 cloudless 2016 by EOX (CC BY 4.0) · Elevation: AWS Terrain Tiles · Airports: OurAirports</div>
+  </div>
+
+  <div id="loading" class="overlay hidden">
+    <div class="card small-card"><div id="loadText">Loading…</div><div class="bar"><div id="loadBar"></div></div></div>
+  </div>
+
+  <div id="menu" class="overlay">
+    <div class="card">
+      <h1>Sky Hopper</h1>
+      <p class="sub">Flight training simulator · JSBSim flight dynamics · real-world terrain</p>
+      <p id="menuMsg" class="msg hidden"></p>
+      <button id="resumeBtn" class="primary hidden">Resume</button>
+
+      <div class="field">
+        <label>Aircraft</label>
+        <div id="acSel" class="seg">
+          <button data-v="a320"><b>Airbus A320</b><small>Fly-by-wire, A/THR, AP</small></button>
+          <button data-v="c172"><b>Cessna 172</b><small>Basic trainer</small></button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="aptSearch">Airport</label>
+        <div class="apt">
+          <input id="aptSearch" autocomplete="off" spellcheck="false" placeholder="ICAO, IATA or name (e.g. EDDM, MUC)">
+          <div id="aptResults" class="hidden"></div>
+        </div>
+        <div id="aptName" class="hint"></div>
+      </div>
+      <div class="field row2">
+        <div><label for="rwySel">Runway</label><select id="rwySel"></select></div>
+        <div><label for="timeSel">Time</label>
+          <select id="timeSel"><option value="dawn">Dawn</option><option value="morning">Morning</option><option value="noon">Noon</option><option value="afternoon">Afternoon</option><option value="dusk">Dusk</option></select></div>
+      </div>
+      <div class="field row2">
+        <div><label for="windSel">Wind</label>
+          <select id="windSel"><option value="calm">Calm</option><option value="head">12 kt headwind</option><option value="cross">15 kt crosswind</option><option value="gusty">22 kt gusty, turbulent</option></select></div>
+        <div><label for="visSel">Visibility</label>
+          <select id="visSel"><option value="cavok">CAVOK</option><option value="10km">10 km</option><option value="5km">5 km haze</option><option value="1500m">1500 m mist</option></select></div>
+      </div>
+      <div class="field">
+        <label>Start</label>
+        <div id="startSel" class="seg"></div>
+      </div>
+      <div class="opts">
+        <label class="opt"><input type="checkbox" id="optSound"> Sound &amp; callouts</label>
+        <label class="opt"><input type="checkbox" id="optFpv"> Flight path vector</label>
+        <label class="opt"><input type="checkbox" id="optInvert"> Invert pitch</label>
+        <label class="opt hidden" id="tiltOpt"><input type="checkbox" id="optTilt"> Tilt to steer</label>
+      </div>
+      <p id="loadMsg" class="sub">Loading airport database…</p>
+      <button id="flyBtn" class="primary hidden">Fly</button>
+      <details class="help">
+        <summary>How to fly</summary>
+        <p><b>Side stick</b> (left thumb): the A320 is fly-by-wire — the stick commands pitch and roll <i>rates</i>. Let go and it holds its attitude, auto-trims and protects against stalls, overspeed and excessive bank. Below 50 ft it enters flare mode: the nose slowly lowers, so you flare by pulling gently at ~30 ft.</p>
+        <p><b>Thrust levers</b> (right): IDLE · CL · FLX/MCT · TOGA. Take off with FLX or TOGA, then pull back to CL ("LVR CLB" flashes) so the autothrust manages speed. At touchdown go to IDLE ("RETARD") and press REV.</p>
+        <p><b>FCU</b>: speed, heading, altitude and vertical speed; AP1, A/THR, LOC and APPR (ILS). The magenta speed is managed, cyan is selected.</p>
+        <p><b>Typical landing</b>: flaps FULL, gear down, ground spoilers ARM, autobrake MED, fly Vapp on the ILS. Follow the green flight-director bars or the PAPI lights (2 white, 2 red).</p>
+        <p>Keyboard: arrows/WASD stick, Q/E rudder, Shift/Ctrl thrust, 1–4 detents, F/V flaps, G gear, R reverse, X autopilot, B brakes, C camera, P pause.</p>
+      </details>
+      <p class="credits">Imagery: Sentinel-2 cloudless 2016 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016), CC BY 4.0 · Elevation: Terrain Tiles on AWS (SRTM, GMTED, ETOPO1 and others) · Airports: OurAirports (public domain) · Flight dynamics: JSBSim (LGPL)</p>
+    </div>
+  </div>
+
+  <div id="rotate">Turn your phone sideways ↻</div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
